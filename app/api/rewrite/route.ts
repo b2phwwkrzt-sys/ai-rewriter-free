@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Daily free limit reached. Please try again tomorrow." }, { status: 429 });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) return NextResponse.json({ error: "The service is not configured yet." }, { status: 503 });
 
     const prompt = [
@@ -46,27 +46,29 @@ export async function POST(request: NextRequest) {
       text,
     ].join("\n");
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${encodeURIComponent(apiKey)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.35, maxOutputTokens: 1200 },
-        }),
-        cache: "no-store",
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify({
+        model: "llama-3.1-8b-instant",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.35,
+        max_completion_tokens: 1200,
+      }),
+      cache: "no-store",
+    });
 
     if (!response.ok) {
       const details = await response.text();
-      console.error("Gemini API error", response.status, details.slice(0, 500));
+      console.error("Groq API error", response.status, details.slice(0, 500));
       return NextResponse.json({ error: "The AI service is temporarily unavailable." }, { status: 502 });
     }
 
     const data = await response.json();
-    const output = data?.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text || "").join("").trim();
+    const output = data?.choices?.[0]?.message?.content?.trim();
     if (!output) return NextResponse.json({ error: "No rewrite was returned." }, { status: 502 });
 
     return NextResponse.json({ text: output });
